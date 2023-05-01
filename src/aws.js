@@ -1,7 +1,27 @@
-const AWS = require('aws-sdk');
 const core = require('@actions/core');
+const AWS = require('aws-sdk');
+const axios = require('axios');
+const _ = require('lodash');
 const config = require('./config');
 
+async function getLatestRunner(cpuArchitecture) {
+  const latestRunner = await axios.get('https://api.github.com/repos/actions/runner/releases/latest');
+
+  const asset = _.find(latestRunner.assets, function(o) {
+    return o.name.contains(`actions-runner-linux-${cpuArchitecture}`);
+  });
+
+  if(!asset) {
+    throw new Error(`The latest runner is not found for the ${cpuArchitecture} CPU architecture`);
+  }
+
+  core.info(`The latest runner for the ${cpuArchitecture} CPU architecture: ${asset.browser_download_url}`);
+
+  return {
+    fileName: asset.name,
+    fileUrl: asset.browser_download_url
+  }
+}
 // User data scripts are run as the root user
 function buildUserDataScript(githubRegistrationToken, label) {
   if (config.input.runnerHomeDir) {
@@ -30,6 +50,8 @@ function buildUserDataScript(githubRegistrationToken, label) {
 
 async function startEc2Instance(label, githubRegistrationToken) {
   const ec2 = new AWS.EC2();
+  
+  const latestRunner = await getLatestRunner(config.input.cpuArchitecture);
 
   const userData = buildUserDataScript(githubRegistrationToken, label);
 
